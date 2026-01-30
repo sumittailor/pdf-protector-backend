@@ -1,51 +1,69 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const { exec } = require('child_process');
-const cors = require('cors');
-const fs = require('fs');
+const express = require("express");
+const multer = require("multer");
+const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
+const { PDFDocument } = require("pdf-lib");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure folders exist
-if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
-if (!fs.existsSync('protected')) fs.mkdirSync('protected');
+// Ensure upload folder
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
-// Multer setup for file uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/')
-  },
-  filename: function (req, file, cb) {
-    cb(null, file.originalname)
-  }
+// Multer setup
+const upload = multer({
+  dest: uploadDir,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
-const upload = multer({ storage });
 
-// Endpoint to protect PDF
-app.post('/protect', upload.single('pdf'), (req, res) => {
-  const password = req.body.password;
-  const inputFile = req.file.path;
-  const outputFile = path.join('protected', req.file.originalname);
+// API: Protect PDF with password
+app.post("/protect", upload.single("pdf"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).send("No PDF uploaded");
 
-  const cmd = `qpdf --encrypt ${password} ${password} 256 -- "${inputFile}" "${outputFile}"`;
+    const password = req.body.password;
+    if (!password) return res.status(400).send("Password required");
 
-  exec(cmd, (err) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).send('Error protecting PDF');
-    }
-    res.download(outputFile);
-  });
+    const inputPath = req.file.path;
+    const pdfBytes = fs.readFileSync(inputPath);
+
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+
+    pdfDoc.encrypt({
+      userPassword: password,
+      ownerPassword: password,
+      permissions: {
+        printing: "highResolution",
+        modifying: false,
+        copying: false,
+        annotating: false
+      }
+    });
+
+    const protectedPdf = await pdfDoc.save();
+
+    // Cleanup uploaded file
+    fs.unlinkSync(inputPath);
+
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="protected.pdf"`
+    });
+
+    res.send(Buffer.from(protectedPdf));
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Failed to protect PDF");
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server started at http://localhost:${PORT}`);
+  console.log(`✅ PDF Protector running on port ${PORT}`);
 });
