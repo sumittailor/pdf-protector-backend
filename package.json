@@ -1,12 +1,17 @@
 {
   "name": "pdf-protector-backend",
   "version": "1.0.0",
+  "description": "PDF password protector backend using pdf-lib",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "multer": "^1.4.5",
+    "cors": "^2.8.5",
+    "pdf-lib": "^1.17.1"
   }
 }
